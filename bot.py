@@ -5,57 +5,69 @@ from flask import Flask
 
 import google.generativeai as genai
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# ---------- ENV ----------
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 PORT = int(os.environ.get("PORT", "10000"))
 
 if not BOT_TOKEN:
-    raise RuntimeError("Missing BOT_TOKEN env var")
+    raise RuntimeError("BOT_TOKEN missing")
 if not GEMINI_API_KEY:
-    raise RuntimeError("Missing GEMINI_API_KEY env var")
+    raise RuntimeError("GEMINI_API_KEY missing")
 
+# ---------- GEMINI ----------
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
 
-# ---- Flask (Render port bind) ----
+# ✅ FREE + WORKING MODEL
+model = genai.GenerativeModel("gemini-1.5-flash-latest")
+
+# ---------- FLASK (Render port binding) ----------
 app = Flask(__name__)
 
-@app.get("/")
+@app.route("/")
 def home():
-    return "OK - Free AI Telegram bot running"
+    return "Telegram Gemini bot is running"
 
 def run_flask():
     app.run(host="0.0.0.0", port=PORT)
 
-# ---- Telegram handlers ----
+# ---------- TELEGRAM ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Hi! Send a message, I’ll reply using Gemini (free tier).")
+    await update.message.reply_text(
+        "🤖 Free AI Bot (Gemini)\n\nJust send a message!"
+    )
 
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
-    if not text:
+    user_text = update.message.text
+    if not user_text:
         return
 
     try:
-        resp = model.generate_content(text)
-        reply = (resp.text or "").strip() or "I couldn’t generate a reply."
+        response = model.generate_content(user_text)
+        reply = response.text or "No response generated."
         await update.message.reply_text(reply)
     except Exception as e:
         logging.exception("Gemini error")
-        await update.message.reply_text(f"⚠️ Error: {e}")
+        await update.message.reply_text("⚠️ AI error, try again later.")
 
 def main():
     Thread(target=run_flask, daemon=True).start()
 
-    tg = Application.builder().token(BOT_TOKEN).build()
-    tg.add_handler(CommandHandler("start", start))
-    tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
+    app_tg = Application.builder().token(BOT_TOKEN).build()
+    app_tg.add_handler(CommandHandler("start", start))
+    app_tg.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 
-    tg.run_polling()
+    app_tg.run_polling()
 
 if __name__ == "__main__":
     main()
